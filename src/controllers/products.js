@@ -497,6 +497,12 @@ const ProductController = {
         isActive,
       };
 
+      Object.keys(updateData).forEach((key) => {
+        if (updateData[key] === undefined) {
+          delete updateData[key];
+        }
+      });
+
       Object.assign(variant, updateData);
 
       await variant.save();
