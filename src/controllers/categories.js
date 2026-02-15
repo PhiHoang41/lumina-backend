@@ -146,31 +146,38 @@ const CategoryController = {
         });
       }
 
+      const updateData = {};
+
       if (name && name !== category.name) {
-        const existingCategory = await Category.findOne({ name });
+        const existingCategory = await Category.findOne({
+          name,
+          _id: { $ne: id },
+        });
         if (existingCategory) {
           return res.status(400).json({
             success: false,
             message: "Tên danh mục đã tồn tại",
           });
         }
-        category.slug = slugify(name, {
+        updateData.name = name;
+        updateData.slug = slugify(name, {
           lower: true,
           strict: true,
           locale: "vi",
         });
       }
 
-      if (name) category.name = name;
-      if (image !== undefined) category.image = image;
-      if (isActive !== undefined) category.isActive = isActive;
+      updateData.image = image;
+      updateData.isActive = isActive;
 
-      await category.save();
+      const updatedCategory = await Category.findByIdAndUpdate(id, updateData, {
+        returnDocument: "after",
+      });
 
       return res.status(200).json({
         success: true,
         message: "Cập nhật danh mục thành công",
-        data: category,
+        data: updatedCategory,
       });
     } catch (error) {
       console.error("Lỗi cập nhật danh mục:", error);
