@@ -58,7 +58,6 @@ productSchema.index({ name: "text" });
 productSchema.index({ category: 1 });
 productSchema.index({ isActive: 1 });
 productSchema.index({ basePrice: 1 });
-productSchema.index({ slug: 1 });
 
 const Product = mongoose.model("Product", productSchema);
 
