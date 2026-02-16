@@ -20,8 +20,9 @@ const productVariantSchema = new mongoose.Schema(
       },
       hex: {
         type: String,
-        required: [true, "Mã màu hex là bắt buộc"],
+        required: false,
         trim: true,
+        default: "transparent",
       },
     },
     price: {
@@ -34,11 +35,6 @@ const productVariantSchema = new mongoose.Schema(
       required: [true, "Tồn kho là bắt buộc"],
       min: [0, "Tồn kho không được âm"],
       default: 0,
-    },
-    sku: {
-      type: String,
-      unique: true,
-      trim: true,
     },
     images: [
       {

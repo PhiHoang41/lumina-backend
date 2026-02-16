@@ -23,10 +23,6 @@ const productSchema = new mongoose.Schema(
       ref: "Category",
       required: [true, "Danh mục là bắt buộc"],
     },
-    basePrice: {
-      type: Number,
-      min: [0, "Giá không được âm"],
-    },
     images: [
       {
         type: String,
@@ -57,7 +53,6 @@ const productSchema = new mongoose.Schema(
 productSchema.index({ name: "text" });
 productSchema.index({ category: 1 });
 productSchema.index({ isActive: 1 });
-productSchema.index({ basePrice: 1 });
 
 const Product = mongoose.model("Product", productSchema);
 
