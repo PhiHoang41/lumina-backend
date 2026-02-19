@@ -13,8 +13,6 @@ const updateProductTotalStock = async (productId) => {
 };
 
 const ProductController = {
-  // ==================== PRODUCTS ====================
-
   createProduct: async (req, res) => {
     try {
       const { name, description, category, images, variants, isActive } =
@@ -99,6 +97,11 @@ const ProductController = {
         isActive,
         sortBy = "createdAt",
         sortOrder = "desc",
+        size,
+        color,
+        inStock,
+        minPrice,
+        maxPrice,
       } = req.query;
 
       const filter = {};
@@ -115,6 +118,10 @@ const ProductController = {
         filter.isActive = isActive === "true";
       }
 
+      if (inStock) {
+        filter.totalStock = inStock === "true" ? { $gt: 0 } : { $eq: 0 };
+      }
+
       const sort = {};
       sort[sortBy] = sortOrder === "desc" ? -1 : 1;
 
@@ -122,25 +129,109 @@ const ProductController = {
       const parsedLimit = parseInt(limit);
       const skip = (parsedPage - 1) * parsedLimit;
 
-      const total = await Product.countDocuments(filter);
-      const products = await Product.find(filter)
-        .populate("category", "name slug")
-        .populate("variants")
-        .sort(sort)
-        .skip(skip)
-        .limit(parsedLimit);
+      if (size || color || minPrice || maxPrice) {
+        const pipeline = [
+          {
+            $match: filter,
+          },
+          {
+            $lookup: {
+              from: "categories",
+              localField: "category",
+              foreignField: "_id",
+              as: "category",
+            },
+          },
+          {
+            $unwind: {
+              path: "$category",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $lookup: {
+              from: "productvariants",
+              localField: "_id",
+              foreignField: "product",
+              as: "variants",
+            },
+          },
+        ];
 
-      return res.status(200).json({
-        success: true,
-        message: "Lấy danh sách sản phẩm thành công",
-        data: products,
-        pagination: {
-          total,
-          page: parsedPage,
-          limit: parsedLimit,
-          totalPages: Math.ceil(total / parsedLimit),
-        },
-      });
+        if (size) {
+          pipeline.push({
+            $match: {
+              "variants.size": size,
+              "variants.isActive": true,
+            },
+          });
+        }
+
+        if (color) {
+          pipeline.push({
+            $match: {
+              "variants.color.name": color,
+              "variants.isActive": true,
+            },
+          });
+        }
+
+        if (minPrice || maxPrice) {
+          pipeline.push({
+            $match: {
+              "variants.price": {
+                ...(minPrice && { $gte: parseFloat(minPrice) }),
+                ...(maxPrice && { $lte: parseFloat(maxPrice) }),
+              },
+              "variants.isActive": true,
+            },
+          });
+        }
+
+        const countPipeline = [...pipeline, { $count: "total" }];
+        const countResult = await Product.aggregate(countPipeline);
+        const total = countResult.length > 0 ? countResult[0].total : 0;
+
+        pipeline.push(
+          { $sort: sort },
+          { $skip: skip },
+          { $limit: parsedLimit },
+        );
+
+        const products = await Product.aggregate(pipeline);
+
+        return res.status(200).json({
+          success: true,
+          message: "Lấy danh sách sản phẩm thành công",
+          data: products,
+          pagination: {
+            total,
+            page: parsedPage,
+            limit: parsedLimit,
+            totalPages: Math.ceil(total / parsedLimit),
+          },
+        });
+      } else {
+        const total = await Product.countDocuments(filter);
+        const products = await Product.find(filter)
+          .populate("category", "name slug")
+          .populate("variants")
+          .sort(sort)
+          .skip(skip)
+          .limit(parsedLimit);
+
+        return res.status(200).json({
+          success: true,
+          message: "Lấy danh sách sản phẩm thành công",
+          data: products,
+          pagination: {
+            total,
+            page: parsedPage,
+            limit: parsedLimit,
+            totalPages: Math.ceil(total / parsedLimit),
+          },
+        });
+      }
     } catch (error) {
       console.error("Lỗi lấy danh sách sản phẩm:", error);
       return res.status(500).json({
