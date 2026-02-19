@@ -50,7 +50,7 @@ const productSchema = new mongoose.Schema(
   },
 );
 
-productSchema.index({ name: "text" });
+productSchema.index({ name: "text", description: "text" });
 productSchema.index({ category: 1 });
 productSchema.index({ isActive: 1 });
 

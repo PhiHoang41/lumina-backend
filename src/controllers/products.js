@@ -2,6 +2,7 @@ const Product = require("../models/products");
 const ProductVariant = require("../models/productVariants");
 const Category = require("../models/categories");
 const slugify = require("slugify");
+const mongoose = require("mongoose");
 
 const updateProductTotalStock = async (productId) => {
   const variants = await ProductVariant.find({
@@ -107,7 +108,7 @@ const ProductController = {
       const filter = {};
 
       if (search) {
-        filter.$text = { $search: search };
+        filter.name = { $regex: search, $options: "i" };
       }
 
       if (category) {
@@ -130,9 +131,42 @@ const ProductController = {
       const skip = (parsedPage - 1) * parsedLimit;
 
       if (size || color || minPrice || maxPrice) {
+        const variantConditions = [
+          {
+            $eq: ["$$variant.isActive", true],
+          },
+        ];
+
+        if (size) {
+          variantConditions.push({ $eq: ["$$variant.size", size] });
+        }
+
+        if (color) {
+          variantConditions.push({ $eq: ["$$variant.color.name", color] });
+        }
+
+        if (minPrice) {
+          variantConditions.push({
+            $gte: ["$$variant.price", parseFloat(minPrice)],
+          });
+        }
+
+        if (maxPrice) {
+          variantConditions.push({
+            $lte: ["$$variant.price", parseFloat(maxPrice)],
+          });
+        }
+
+        const baseFilter = { ...filter };
+        if (baseFilter.category) {
+          baseFilter.category = new mongoose.Types.ObjectId(
+            baseFilter.category,
+          );
+        }
+
         const pipeline = [
           {
-            $match: filter,
+            $match: baseFilter,
           },
           {
             $lookup: {
@@ -156,37 +190,23 @@ const ProductController = {
               as: "variants",
             },
           },
-        ];
-
-        if (size) {
-          pipeline.push({
-            $match: {
-              "variants.size": size,
-              "variants.isActive": true,
-            },
-          });
-        }
-
-        if (color) {
-          pipeline.push({
-            $match: {
-              "variants.color.name": color,
-              "variants.isActive": true,
-            },
-          });
-        }
-
-        if (minPrice || maxPrice) {
-          pipeline.push({
-            $match: {
-              "variants.price": {
-                ...(minPrice && { $gte: parseFloat(minPrice) }),
-                ...(maxPrice && { $lte: parseFloat(maxPrice) }),
+          {
+            $addFields: {
+              variants: {
+                $filter: {
+                  input: "$variants",
+                  as: "variant",
+                  cond: { $and: variantConditions },
+                },
               },
-              "variants.isActive": true,
             },
-          });
-        }
+          },
+          {
+            $match: {
+              "variants.0": { $exists: true },
+            },
+          },
+        ];
 
         const countPipeline = [...pipeline, { $count: "total" }];
         const countResult = await Product.aggregate(countPipeline);
