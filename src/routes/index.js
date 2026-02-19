@@ -11,6 +11,6 @@ router.use("/auth", authRouter);
 router.use("/users", userRouter);
 router.use("/categories", categoryRouter);
 router.use("/coupons", couponRouter);
-router.use("/admin/products", productRouter);
+router.use("/products", productRouter);
 
 module.exports = router;

@@ -15,15 +15,8 @@ const updateProductTotalStock = async (productId) => {
 const ProductController = {
   createProduct: async (req, res) => {
     try {
-      const {
-        name,
-        description,
-        category,
-        basePrice,
-        images,
-        variants,
-        isActive,
-      } = req.body;
+      const { name, description, category, images, variants, isActive } =
+        req.body;
 
       const existingProduct = await Product.findOne({ name });
       if (existingProduct) {
@@ -52,7 +45,6 @@ const ProductController = {
         slug,
         description,
         category,
-        basePrice,
         images: images || [],
         variants: [],
         isActive,
@@ -67,14 +59,18 @@ const ProductController = {
             color: variantData.color,
             price: variantData.price,
             stock: variantData.stock || 0,
-            sku: variantData.sku,
             images: variantData.images || [],
             isActive: variantData.isActive,
           });
           product.variants.push(variant._id);
         }
 
+        await product.save();
         await updateProductTotalStock(product._id);
+
+        product.variants = await ProductVariant.find({
+          product: product._id,
+        });
       }
 
       return res.status(201).json({
@@ -99,13 +95,13 @@ const ProductController = {
         search,
         category,
         isActive,
-        minPrice,
-        maxPrice,
         sortBy = "createdAt",
         sortOrder = "desc",
         size,
         color,
         inStock,
+        minPrice,
+        maxPrice,
       } = req.query;
 
       const filter = {};
@@ -137,6 +133,20 @@ const ProductController = {
         const pipeline = [
           {
             $match: filter,
+          },
+          {
+            $lookup: {
+              from: "categories",
+              localField: "category",
+              foreignField: "_id",
+              as: "category",
+            },
+          },
+          {
+            $unwind: {
+              path: "$category",
+              preserveNullAndEmptyArrays: true,
+            },
           },
           {
             $lookup: {
@@ -204,6 +214,8 @@ const ProductController = {
       } else {
         const total = await Product.countDocuments(filter);
         const products = await Product.find(filter)
+          .populate("category", "name slug")
+          .populate("variants")
           .sort(sort)
           .skip(skip)
           .limit(parsedLimit);
@@ -233,9 +245,10 @@ const ProductController = {
     try {
       const { id } = req.params;
 
-      const product = await Product.findById(id)
-        .populate("category", "name slug")
-        .populate("variants");
+      const product = await Product.findById(id).populate(
+        "category",
+        "name slug",
+      );
 
       if (!product) {
         return res.status(404).json({
@@ -243,6 +256,8 @@ const ProductController = {
           message: "Không tìm thấy sản phẩm",
         });
       }
+
+      product.variants = await ProductVariant.find({ product: id });
 
       let relatedProducts = [];
       if (product.category) {
@@ -252,8 +267,13 @@ const ProductController = {
           isActive: true,
         })
           .populate("category", "name slug")
-          .populate("variants")
           .limit(6);
+
+        for (const relatedProduct of relatedProducts) {
+          relatedProduct.variants = await ProductVariant.find({
+            product: relatedProduct._id,
+          });
+        }
       }
 
       return res.status(200).json({
@@ -274,7 +294,7 @@ const ProductController = {
   updateProduct: async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, description, category, basePrice, images, isActive } =
+      const { name, description, category, images, variants, isActive } =
         req.body;
 
       const product = await Product.findById(id);
@@ -309,7 +329,6 @@ const ProductController = {
       const updateData = {
         description,
         category,
-        basePrice,
         images,
         isActive,
       };
@@ -327,10 +346,85 @@ const ProductController = {
         new: true,
       });
 
+      let newVariantIds = [];
+
+      if (variants && variants.length > 0) {
+        const existingVariants = await ProductVariant.find({
+          product: id,
+        });
+
+        for (const variantData of variants) {
+          if (variantData._id) {
+            const existingVariant = existingVariants.find(
+              (v) => v._id.toString() === variantData._id,
+            );
+
+            if (existingVariant) {
+              existingVariant.size = variantData.size;
+              existingVariant.color = variantData.color;
+              existingVariant.price = variantData.price;
+              existingVariant.stock = variantData.stock;
+              existingVariant.images = variantData.images || [];
+              existingVariant.isActive =
+                variantData.isActive !== undefined
+                  ? variantData.isActive
+                  : true;
+              await existingVariant.save();
+              newVariantIds.push(existingVariant._id);
+            } else {
+              return res.status(400).json({
+                success: false,
+                message: `Variant với ID ${variantData._id} không tồn tại`,
+              });
+            }
+          } else {
+            const newVariant = await ProductVariant.create({
+              product: id,
+              size: variantData.size,
+              color: variantData.color,
+              price: variantData.price,
+              stock: variantData.stock || 0,
+              images: variantData.images || [],
+              isActive:
+                variantData.isActive !== undefined
+                  ? variantData.isActive
+                  : true,
+            });
+            newVariantIds.push(newVariant._id);
+          }
+        }
+
+        const variantIdsToDelete = existingVariants
+          .filter(
+            (existingVariant) =>
+              !variants.some(
+                (v) => v._id && v._id === existingVariant._id.toString(),
+              ),
+          )
+          .map((v) => v._id);
+
+        if (variantIdsToDelete.length > 0) {
+          await ProductVariant.deleteMany({
+            _id: { $in: variantIdsToDelete },
+          });
+        }
+
+        updatedProduct.variants = newVariantIds;
+        await updatedProduct.save();
+        await updateProductTotalStock(id);
+      }
+
+      const finalProduct = await Product.findById(id).populate(
+        "category",
+        "name slug",
+      );
+
+      finalProduct.variants = await ProductVariant.find({ product: id });
+
       return res.status(200).json({
         success: true,
         message: "Cập nhật sản phẩm thành công",
-        data: updatedProduct,
+        data: finalProduct,
       });
     } catch (error) {
       console.error("Lỗi cập nhật sản phẩm:", error);
@@ -408,7 +502,7 @@ const ProductController = {
   createVariant: async (req, res) => {
     try {
       const { productId } = req.params;
-      const { size, color, price, stock, sku, images, isActive } = req.body;
+      const { size, color, price, stock, images, isActive } = req.body;
 
       const product = await Product.findById(productId);
       if (!product) {
@@ -430,23 +524,12 @@ const ProductController = {
         });
       }
 
-      if (sku) {
-        const existingSKU = await ProductVariant.findOne({ sku });
-        if (existingSKU) {
-          return res.status(400).json({
-            success: false,
-            message: "SKU đã tồn tại",
-          });
-        }
-      }
-
       const variant = await ProductVariant.create({
         product: productId,
         size,
         color,
         price,
         stock: stock || 0,
-        sku,
         images: images || [],
         isActive,
       });
@@ -503,7 +586,7 @@ const ProductController = {
   updateVariant: async (req, res) => {
     try {
       const { productId, variantId } = req.params;
-      const { size, color, price, stock, sku, images, isActive } = req.body;
+      const { size, color, price, stock, images, isActive } = req.body;
 
       const variant = await ProductVariant.findById(variantId);
 
@@ -539,25 +622,11 @@ const ProductController = {
         }
       }
 
-      if (sku && sku !== variant.sku) {
-        const existingSKU = await ProductVariant.findOne({
-          sku,
-          _id: { $ne: variantId },
-        });
-        if (existingSKU) {
-          return res.status(400).json({
-            success: false,
-            message: "SKU đã tồn tại",
-          });
-        }
-      }
-
       const updateData = {
         size,
         color,
         price,
         stock,
-        sku,
         images,
         isActive,
       };
