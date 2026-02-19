@@ -108,7 +108,6 @@ const ProductController = {
       const filter = {};
 
       if (search) {
-        // Sử dụng regex search thay vì text search để hoạt động tốt hơn với tiếng Việt
         filter.name = { $regex: search, $options: "i" };
       }
 
@@ -132,9 +131,11 @@ const ProductController = {
       const skip = (parsedPage - 1) * parsedLimit;
 
       if (size || color || minPrice || maxPrice) {
-        const variantConditions = [{
-          $eq: ["$$variant.isActive", true],
-        }];
+        const variantConditions = [
+          {
+            $eq: ["$$variant.isActive", true],
+          },
+        ];
 
         if (size) {
           variantConditions.push({ $eq: ["$$variant.size", size] });
@@ -145,16 +146,22 @@ const ProductController = {
         }
 
         if (minPrice) {
-          variantConditions.push({ $gte: ["$$variant.price", parseFloat(minPrice)] });
+          variantConditions.push({
+            $gte: ["$$variant.price", parseFloat(minPrice)],
+          });
         }
 
         if (maxPrice) {
-          variantConditions.push({ $lte: ["$$variant.price", parseFloat(maxPrice)] });
+          variantConditions.push({
+            $lte: ["$$variant.price", parseFloat(maxPrice)],
+          });
         }
 
         const baseFilter = { ...filter };
         if (baseFilter.category) {
-          baseFilter.category = new mongoose.Types.ObjectId(baseFilter.category);
+          baseFilter.category = new mongoose.Types.ObjectId(
+            baseFilter.category,
+          );
         }
 
         const pipeline = [
