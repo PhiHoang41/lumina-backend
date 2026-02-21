@@ -6,6 +6,7 @@ const adminMiddleware = require("../middlewares/admin");
 
 // ==================== PRODUCTS ====================
 router.get("/", ProductController.getAllProducts);
+router.get("/slug/:slug", ProductController.getProductBySlug);
 router.get("/:id", ProductController.getProductById);
 router.post(
   "/",

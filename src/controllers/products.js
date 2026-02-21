@@ -311,6 +311,60 @@ const ProductController = {
     }
   },
 
+  getProductBySlug: async (req, res) => {
+    try {
+      const { slug } = req.params;
+
+      const product = await Product.findOne({ slug }).populate(
+        "category",
+        "name slug",
+      );
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy sản phẩm",
+        });
+      }
+
+      product.variants = await ProductVariant.find({
+        product: product._id,
+        isActive: true,
+      });
+
+      let relatedProducts = [];
+      if (product.category) {
+        relatedProducts = await Product.find({
+          _id: { $ne: product._id },
+          category: product.category,
+          isActive: true,
+        })
+          .populate("category", "name slug")
+          .limit(6);
+
+        for (const relatedProduct of relatedProducts) {
+          relatedProduct.variants = await ProductVariant.find({
+            product: relatedProduct._id,
+            isActive: true,
+          });
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Lấy sản phẩm thành công",
+        data: product,
+        relatedProducts,
+      });
+    } catch (error) {
+      console.error("Lỗi lấy sản phẩm theo slug:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi khi lấy sản phẩm",
+      });
+    }
+  },
+
   updateProduct: async (req, res) => {
     try {
       const { id } = req.params;
