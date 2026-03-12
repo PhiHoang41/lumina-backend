@@ -1,6 +1,60 @@
 const User = require("../models/users");
 
 const UserController = {
+  createUser: async (req, res) => {
+    try {
+      const { fullName, email, password, phone, address, role, avatar } = req.body;
+
+      // Validate required fields
+      if (!fullName || !email || !password) {
+        return res.status(400).json({
+          success: false,
+          message: "FullName, email and password are required",
+        });
+      }
+
+      // Check if email already exists
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Email already exists",
+        });
+      }
+
+      const newUser = new User({
+        fullName,
+        email,
+        password,
+        phone,
+        address,
+        role: role || "USER",
+        avatar,
+      });
+
+      await newUser.save();
+
+      return res.status(201).json({
+        success: true,
+        message: "User created successfully",
+        data: newUser.toJSON(),
+      });
+    } catch (error) {
+      if (error.name === "ValidationError") {
+        const errors = Object.values(error.errors).map((err) => err.message);
+        return res.status(400).json({
+          success: false,
+          message: errors[0],
+        });
+      }
+      console.error("Lỗi tạo user:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Có lỗi xảy ra khi tạo user",
+      });
+    }
+  },
+
   getMe: async (req, res) => {
     try {
       const { userId } = req.user;
