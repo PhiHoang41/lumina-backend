@@ -8,5 +8,6 @@ const router = express.Router();
 router.get("/me", authMiddleware, UserController.getMe);
 
 router.get("/", authMiddleware, adminMiddleware, UserController.getAllUsers);
+router.get("/:id", authMiddleware, adminMiddleware, UserController.getUserById);
 
 module.exports = router;
