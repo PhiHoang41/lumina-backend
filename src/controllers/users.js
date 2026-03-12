@@ -101,6 +101,49 @@ const UserController = {
       });
     }
   },
+
+  updateUser: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { fullName, phone, avatar, address, role } = req.body;
+
+      const user = await User.findById(id);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy người dùng",
+        });
+      }
+
+      if (fullName) user.fullName = fullName;
+      if (phone) user.phone = phone;
+      if (avatar !== undefined) user.avatar = avatar;
+      if (address !== undefined) user.address = address;
+      if (role && ["USER", "ADMIN"].includes(role)) user.role = role;
+
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Cập nhật user thành công",
+        data: user.toJSON(),
+      });
+    } catch (error) {
+      if (error.name === "ValidationError") {
+        const errors = Object.values(error.errors).map((err) => err.message);
+        return res.status(400).json({
+          success: false,
+          message: errors[0],
+        });
+      }
+      console.error("Lỗi cập nhật user:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Có lỗi xảy ra khi cập nhật user",
+      });
+    }
+  },
 };
 
 module.exports = UserController;
