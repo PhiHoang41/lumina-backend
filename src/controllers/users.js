@@ -278,6 +278,50 @@ const UserController = {
     }
   },
 
+  adminChangePassword: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { newPassword } = req.body;
+
+      if (!newPassword) {
+        return res.status(400).json({
+          success: false,
+          message: "New password is required",
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: "New password must be at least 6 characters",
+        });
+      }
+
+      const user = await User.findById(id);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      user.password = newPassword;
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Password changed successfully",
+      });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred while changing password",
+      });
+    }
+  },
+
   changeRole: async (req, res) => {
     try {
       const { id } = req.params;
