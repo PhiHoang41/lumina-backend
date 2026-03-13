@@ -229,8 +229,101 @@ const removeFromCart = async (req, res) => {
   }
 };
 
+const updateCartItem = async (req, res) => {
+  try {
+    const { productId, variantId, quantity } = req.body;
+    const userId = req.user.userId;
+
+    if (!productId || !variantId || quantity === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu thông tin bắt buộc: productId, variantId, quantity",
+      });
+    }
+
+    if (quantity < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Số lượng phải lớn hơn 0",
+      });
+    }
+
+    const variant = await ProductVariant.findOne({
+      _id: variantId,
+      product: productId,
+      isActive: true,
+    });
+
+    if (!variant) {
+      return res.status(400).json({
+        success: false,
+        message: "Biến thể sản phẩm không tồn tại",
+      });
+    }
+
+    if (variant.stock < quantity) {
+      return res.status(400).json({
+        success: false,
+        message: `Không đủ hàng trong kho. Hiện chỉ còn ${variant.stock} sản phẩm`,
+      });
+    }
+
+    const cart = await Cart.findOne({ user: userId });
+
+    if (!cart) {
+      return res.status(400).json({
+        success: false,
+        message: "Giỏ hàng trống",
+      });
+    }
+
+    const itemIndex = cart.items.findIndex(
+      (item) =>
+        item.product.toString() === productId &&
+        item.variant.toString() === variantId
+    );
+
+    if (itemIndex === -1) {
+      return res.status(400).json({
+        success: false,
+        message: "Sản phẩm không có trong giỏ hàng",
+      });
+    }
+
+    cart.items[itemIndex].quantity = quantity;
+    cart.items[itemIndex].price = variant.price;
+    cart.totalItems = cart.items.reduce((total, item) => total + item.quantity, 0);
+
+    await cart.save();
+
+    await cart.populate([
+      { path: "items.product", select: "name images" },
+      { path: "items.variant", select: "size color price" },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Đã cập nhật số lượng",
+      cart: {
+        _id: cart._id,
+        user: cart.user,
+        items: cart.items,
+        totalItems: cart.totalItems,
+        totalPrice: cart.totalPrice,
+      },
+    });
+  } catch (error) {
+    console.error("Update cart item error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
 module.exports = {
   addToCart,
   getCart,
   removeFromCart,
+  updateCartItem,
 };
