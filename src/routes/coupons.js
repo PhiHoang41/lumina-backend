@@ -47,4 +47,10 @@ router.patch(
   CouponController.updateCouponStatus,
 );
 
+router.post(
+  "/validate",
+  authMiddleware,
+  CouponController.validateCoupon,
+);
+
 module.exports = router;

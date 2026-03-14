@@ -315,6 +315,87 @@ const CouponController = {
       });
     }
   },
+
+  validateCoupon: async (req, res) => {
+    try {
+      const { code, orderAmount } = req.body;
+
+      if (!code || orderAmount === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "Vui lòng cung cấp mã giảm giá và giá trị đơn hàng",
+        });
+      }
+
+      const coupon = await Coupon.findOne({ code: code.toUpperCase() });
+
+      if (!coupon) {
+        return res.status(404).json({
+          success: false,
+          message: "Mã giảm giá không tồn tại",
+        });
+      }
+
+      if (coupon.status !== "ACTIVE") {
+        return res.status(400).json({
+          success: false,
+          message: "Mã giảm giá không còn hoạt động",
+        });
+      }
+
+      const now = new Date();
+      if (now < new Date(coupon.validFrom) || now > new Date(coupon.validTo)) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã giảm giá đã hết hạn",
+        });
+      }
+
+      if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã giảm giá đã được sử dụng hết",
+        });
+      }
+
+      if (coupon.minOrderAmount && orderAmount < coupon.minOrderAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `Đơn hàng tối thiểu ${coupon.minOrderAmount.toLocaleString()} VNĐ để sử dụng mã này`,
+        });
+      }
+
+      let discountAmount = 0;
+      if (coupon.type === "PERCENTAGE") {
+        discountAmount = (orderAmount * coupon.value) / 100;
+        if (coupon.maxDiscountAmount) {
+          discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
+        }
+      } else {
+        discountAmount = coupon.value;
+      }
+
+      discountAmount = Math.min(discountAmount, orderAmount);
+
+      return res.status(200).json({
+        success: true,
+        message: "Mã giảm giá hợp lệ",
+        data: {
+          code: coupon.code,
+          type: coupon.type,
+          value: coupon.value,
+          discountAmount,
+          finalAmount: orderAmount - discountAmount,
+        },
+      });
+    } catch (error) {
+      console.error("Lỗi kiểm tra mã giảm giá:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Có lỗi xảy ra khi kiểm tra mã giảm giá",
+      });
+    }
+  },
 };
 
 module.exports = CouponController;
