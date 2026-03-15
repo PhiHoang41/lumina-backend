@@ -89,12 +89,12 @@ const orderSchema = new mongoose.Schema(
 
     paymentMethod: {
       type: String,
-      enum: ["CASH", "VNPAY"],
+      enum: ["COD", "VNPAY"],
       required: [true, "Phương thức thanh toán là bắt buộc"],
     },
     paymentStatus: {
       type: String,
-      enum: ["UNPAID", "PAID", "REFUNDED"],
+      enum: ["UNPAID", "PAID"],
       default: "UNPAID",
     },
     status: {
