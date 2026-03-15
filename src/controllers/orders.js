@@ -353,6 +353,17 @@ const updateOrderStatus = async (req, res) => {
           await product.save();
         }
       }
+
+      if (order.coupon) {
+        const coupon = await Coupon.findById(order.coupon);
+        if (coupon) {
+          coupon.usedCount = Math.max(0, coupon.usedCount - 1);
+          coupon.usedBy = coupon.usedBy.filter(
+            (id) => id.toString() !== order.orderBy.toString()
+          );
+          await coupon.save();
+        }
+      }
     }
 
     await order.save();
