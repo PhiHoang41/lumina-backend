@@ -1,0 +1,363 @@
+const crypto = require("crypto");
+
+const Order = require("../models/orders");
+const Cart = require("../models/carts");
+const Product = require("../models/products");
+const ProductVariant = require("../models/productVariants");
+const Coupon = require("../models/coupons");
+const sortObject = require("../utils/sortObject");
+
+const createVNPayPaymentUrl = async ({ req, orderId, amount, orderInfo }) => {
+  try {
+    const ipAddr =
+      req.headers["x-forwarded-for"] ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress ||
+      req.connection.socket.remoteAddress ||
+      "127.0.0.1";
+
+    const tmnCode = process.env.VNPAY_TMN_CODE;
+    const secretKey = process.env.VNPAY_SECRET_KEY;
+    let vnpUrl = process.env.VNPAY_VNP_URL;
+    const returnUrl = process.env.VNPAY_RETURN_URL;
+
+    const date = new Date();
+    const createDate = formatDate(date);
+    const expiredDate = formatDate(new Date(date.getTime() + 15 * 60 * 1000));
+
+    let vnp_Params = {};
+
+    vnp_Params["vnp_Version"] = "2.1.0";
+    vnp_Params["vnp_Command"] = "pay";
+    vnp_Params["vnp_TmnCode"] = tmnCode;
+    vnp_Params["vnp_Locale"] = "vn";
+    vnp_Params["vnp_CurrCode"] = "VND";
+    vnp_Params["vnp_TxnRef"] = orderId;
+    vnp_Params["vnp_OrderInfo"] = orderInfo;
+    vnp_Params["vnp_OrderType"] = "other";
+    vnp_Params["vnp_Amount"] = amount * 100;
+    vnp_Params["vnp_ReturnUrl"] = returnUrl;
+    vnp_Params["vnp_IpAddr"] = ipAddr;
+    vnp_Params["vnp_CreateDate"] = createDate;
+    vnp_Params["vnp_ExpireDate"] = expiredDate;
+
+    vnp_Params = sortObject(vnp_Params);
+
+    const querystring = require("qs");
+    const signData = querystring.stringify(vnp_Params, { encode: false });
+    const hmac = crypto.createHmac("sha512", secretKey);
+    const signed = hmac.update(Buffer.from(signData, "utf-8")).digest("hex");
+    vnp_Params["vnp_SecureHash"] = signed;
+
+    vnpUrl += "?" + querystring.stringify(vnp_Params, { encode: false });
+
+    return vnpUrl;
+  } catch (error) {
+    console.error("Create VNPay URL error:", error);
+    return null;
+  }
+};
+
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${year}${month}${day}${hours}${minutes}${seconds}`;
+};
+
+const createOrder = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { paymentMethod, couponCode, fullName, phone, email, address, note } = req.body;
+
+    if (!fullName || !phone || !email || !address) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu thông tin bắt buộc",
+      });
+    }
+
+    if (!paymentMethod || !["COD", "VNPAY"].includes(paymentMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: "Phương thức thanh toán không hợp lệ",
+      });
+    }
+
+    const cart = await Cart.findOne({ user: userId }).populate([
+      { path: "items.product", select: "name" },
+      { path: "items.variant", select: "size color price stock" },
+    ]);
+
+    if (!cart || cart.items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Giỏ hàng trống",
+      });
+    }
+
+    const productsOrder = [];
+    let subtotal = 0;
+
+    for (const item of cart.items) {
+      const product = await Product.findById(item.product);
+      if (!product) {
+        return res.status(400).json({
+          success: false,
+          message: "Sản phẩm không tồn tại",
+        });
+      }
+
+      const variant = await ProductVariant.findById(item.variant);
+      if (!variant) {
+        return res.status(400).json({
+          success: false,
+          message: "Biến thể không tồn tại",
+        });
+      }
+
+      if (variant.stock < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Không đủ hàng. Chỉ còn ${variant.stock} sản phẩm`,
+        });
+      }
+
+      const variantName = variant.color ? `${variant.color.name} / ${variant.size}` : variant.size;
+
+      productsOrder.push({
+        product: item.product,
+        productName: product.name,
+        variant: item.variant,
+        variantName: variantName,
+        quantity: item.quantity,
+        price: item.price,
+      });
+
+      subtotal += item.price * item.quantity;
+
+      variant.stock -= item.quantity;
+      await variant.save();
+
+      product.totalStock -= item.quantity;
+      await product.save();
+    }
+
+    let coupon = null;
+    let discountAmount = 0;
+
+    if (couponCode) {
+      coupon = await Coupon.findOne({ code: couponCode.toUpperCase() });
+
+      if (!coupon) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã giảm giá không hợp lệ",
+        });
+      }
+
+      if (coupon.status !== "ACTIVE") {
+        return res.status(400).json({
+          success: false,
+          message: "Mã giảm giá không còn hiệu lực",
+        });
+      }
+
+      const now = new Date();
+      if (now < coupon.validFrom || now > coupon.validTo) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã giảm giá đã hết hạn",
+        });
+      }
+
+      if (subtotal < coupon.minOrderAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `Đơn hàng phải có giá trị tối thiểu ${coupon.minOrderAmount} VND`,
+        });
+      }
+
+      if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã giảm giá đã hết lượt sử dụng",
+        });
+      }
+
+      if (coupon.type === "PERCENTAGE") {
+        discountAmount = (subtotal * coupon.value) / 100;
+        if (coupon.maxDiscountAmount && discountAmount > coupon.maxDiscountAmount) {
+          discountAmount = coupon.maxDiscountAmount;
+        }
+      } else {
+        discountAmount = coupon.value;
+      }
+
+      coupon.usedCount += 1;
+      await coupon.save();
+    }
+
+    const totalPrice = Math.max(0, subtotal - discountAmount);
+
+    const order = new Order({
+      customerName: fullName,
+      customerEmail: email,
+      customerPhone: phone,
+      address,
+      note: note || null,
+      orderBy: userId,
+      products: productsOrder,
+      coupon: coupon ? coupon._id : null,
+      discountAmount,
+      subtotal,
+      totalPrice,
+      paymentMethod: paymentMethod,
+      paymentStatus: "UNPAID",
+      status: "PENDING",
+    });
+
+    await order.save();
+    await Cart.deleteOne({ user: userId });
+
+    if (paymentMethod === "VNPAY") {
+      const orderId = `LUMINA_${order._id}`;
+      const paymentUrl = await createVNPayPaymentUrl({
+        req,
+        orderId,
+        amount: totalPrice,
+        orderInfo: `Thanh toán đơn hàng ${orderId}`,
+      });
+
+      if (!paymentUrl) {
+        return res.status(500).json({
+          success: false,
+          message: "Lỗi tạo URL thanh toán VNPay",
+        });
+      }
+
+      order.vnpTxnRef = orderId;
+      await order.save();
+
+      return res.status(201).json({
+        success: true,
+        message: "Tạo đơn hàng thành công",
+        order: {
+          _id: order._id,
+          vnpTxnRef: order.vnpTxnRef,
+        },
+        paymentUrl,
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Tạo đơn hàng thành công",
+      order: {
+        _id: order._id,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        address: order.address,
+        note: order.note,
+        products: order.products,
+        subtotal: order.subtotal,
+        discountAmount: order.discountAmount,
+        totalPrice: order.totalPrice,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        status: order.status,
+        createdAt: order.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Create order error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
+const updateOrderStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, paymentStatus, vnpTransactionId } = req.body;
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Đơn hàng không tồn tại",
+      });
+    }
+
+    if (order.orderBy.toString() !== userId && userRole !== "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền cập nhật đơn hàng này",
+      });
+    }
+
+    const validStatuses = ["PENDING", "CONFIRMED", "SHIPPING", "DELIVERED", "CANCELLED"];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Trạng thái không hợp lệ",
+      });
+    }
+
+    const validPaymentStatuses = ["UNPAID", "PAID", "REFUNDED"];
+    if (paymentStatus && !validPaymentStatuses.includes(paymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Trạng thái thanh toán không hợp lệ",
+      });
+    }
+
+    if (status) order.status = status;
+    if (paymentStatus) order.paymentStatus = paymentStatus;
+    if (vnpTransactionId) order.vnpTransactionId = vnpTransactionId;
+
+    if (status === "CANCELLED" && order.status !== "CANCELLED") {
+      for (const item of order.products) {
+        const variant = await ProductVariant.findById(item.variant);
+        if (variant) {
+          variant.stock += item.quantity;
+          await variant.save();
+        }
+
+        const product = await Product.findById(item.product);
+        if (product) {
+          product.totalStock += item.quantity;
+          await product.save();
+        }
+      }
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật trạng thái thành công",
+      order,
+    });
+  } catch (error) {
+    console.error("Update order status error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
+module.exports = {
+  createOrder,
+  updateOrderStatus,
+};
