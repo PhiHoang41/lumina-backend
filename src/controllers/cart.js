@@ -165,6 +165,27 @@ const getCart = async (req, res) => {
   }
 };
 
+const getCartCount = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const cart = await Cart.findOne({ user: userId });
+
+    const itemCount = cart ? cart.items.length : 0;
+
+    return res.status(200).json({
+      success: true,
+      itemCount,
+    });
+  } catch (error) {
+    console.error("Get cart count error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
 const removeFromCart = async (req, res) => {
   try {
     const { productId, variantId } = req.body;
@@ -324,6 +345,7 @@ const updateCartItem = async (req, res) => {
 module.exports = {
   addToCart,
   getCart,
+  getCartCount,
   removeFromCart,
   updateCartItem,
 };

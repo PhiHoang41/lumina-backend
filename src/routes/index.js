@@ -5,6 +5,7 @@ const categoryRouter = require("./categories");
 const couponRouter = require("./coupons");
 const productRouter = require("./products");
 const cartRouter = require("./cart");
+const orderRouter = require("./orders");
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.use("/categories", categoryRouter);
 router.use("/coupons", couponRouter);
 router.use("/products", productRouter);
 router.use("/cart", cartRouter);
+router.use("/orders", orderRouter);
 
 module.exports = router;
