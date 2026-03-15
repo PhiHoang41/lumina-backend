@@ -552,7 +552,7 @@ const cancelOrder = async (req, res) => {
 const updateOrderAdminStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, paymentStatus } = req.body;
+    const { status } = req.body;
 
     const order = await Order.findById(id);
 
@@ -571,15 +571,11 @@ const updateOrderAdminStatus = async (req, res) => {
       });
     }
 
-    const validPaymentStatuses = ["UNPAID", "PAID"];
-    if (paymentStatus && !validPaymentStatuses.includes(paymentStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: "Trạng thái thanh toán không hợp lệ",
-      });
-    }
-
     if (status) {
+      if (status === "DELIVERED") {
+        order.paymentStatus = "PAID";
+      }
+
       if (status === "CANCELLED") {
         if (!["PENDING", "CONFIRMED"].includes(order.status)) {
           return res.status(400).json({
@@ -615,10 +611,6 @@ const updateOrderAdminStatus = async (req, res) => {
       }
 
       order.status = status;
-    }
-
-    if (paymentStatus) {
-      order.paymentStatus = paymentStatus;
     }
 
     await order.save();
