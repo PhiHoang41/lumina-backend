@@ -229,7 +229,7 @@ const createOrder = async (req, res) => {
       discountAmount,
       subtotal,
       totalPrice,
-      paymentMethod: paymentMethod,
+      paymentMethod,
       paymentStatus: "UNPAID",
       status: "PENDING",
     });
@@ -296,12 +296,106 @@ const createOrder = async (req, res) => {
   }
 };
 
-const updateOrderStatus = async (req, res) => {
+const getAllOrders = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      paymentStatus,
+      search,
+      sort = "createdAt:desc",
+    } = req.query;
+
+    const filter = {};
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (paymentStatus) {
+      filter.paymentStatus = paymentStatus;
+    }
+
+    if (search) {
+      filter.$or = [
+        { customerName: { $regex: search, $options: "i" } },
+        { customerEmail: { $regex: search, $options: "i" } },
+        { customerPhone: { $regex: search, $options: "i" } },
+        { orderCode: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const [sortField, sortOrder] = sort.split(":");
+    const sortObj = {};
+    sortObj[sortField] = sortOrder === "asc" ? 1 : -1;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [orders, total] = await Promise.all([
+      Order.find(filter)
+        .populate("coupon", "code discountType value")
+        .populate("orderBy", "name email")
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limitNum),
+      Order.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: orders,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Get all orders error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
+const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, paymentStatus, vnpTransactionId } = req.body;
+
+    const order = await Order.findById(id)
+      .populate("coupon")
+      .populate("orderBy", "name email phone");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Đơn hàng không tồn tại",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    console.error("Get order by ID error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
+const confirmPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paymentStatus, status, vnpTransactionId } = req.body;
     const userId = req.user.userId;
-    const userRole = req.user.role;
 
     const order = await Order.findById(id);
 
@@ -312,34 +406,30 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    if (order.orderBy.toString() !== userId && userRole !== "ADMIN") {
+    if (order.orderBy.toString() !== userId) {
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền cập nhật đơn hàng này",
       });
     }
 
-    const validStatuses = ["PENDING", "CONFIRMED", "SHIPPING", "DELIVERED", "CANCELLED"];
-    if (status && !validStatuses.includes(status)) {
+    if (order.status !== "PENDING") {
       return res.status(400).json({
         success: false,
-        message: "Trạng thái không hợp lệ",
+        message: "Chỉ có thể xác nhận thanh toán khi đơn hàng đang chờ xác nhận",
       });
     }
 
-    const validPaymentStatuses = ["UNPAID", "PAID", "REFUNDED"];
-    if (paymentStatus && !validPaymentStatuses.includes(paymentStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: "Trạng thái thanh toán không hợp lệ",
-      });
-    }
+    if (paymentStatus === "PAID" && status === "CONFIRMED") {
+      order.paymentStatus = "PAID";
+      order.status = "CONFIRMED";
+      if (vnpTransactionId) {
+        order.vnpTransactionId = vnpTransactionId;
+      }
+    } else if (paymentStatus === "UNPAID" && status === "CANCELLED") {
+      order.paymentStatus = "UNPAID";
+      order.status = "CANCELLED";
 
-    if (status) order.status = status;
-    if (paymentStatus) order.paymentStatus = paymentStatus;
-    if (vnpTransactionId) order.vnpTransactionId = vnpTransactionId;
-
-    if (status === "CANCELLED" && order.status !== "CANCELLED") {
       for (const item of order.products) {
         const variant = await ProductVariant.findById(item.variant);
         if (variant) {
@@ -364,6 +454,163 @@ const updateOrderStatus = async (req, res) => {
           await coupon.save();
         }
       }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Dữ liệu không hợp lệ",
+      });
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Xác nhận thanh toán thành công",
+      order,
+    });
+  } catch (error) {
+    console.error("Confirm payment error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
+const cancelOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Đơn hàng không tồn tại",
+      });
+    }
+
+    if (order.orderBy.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền cập nhật đơn hàng này",
+      });
+    }
+
+    if (order.status !== "PENDING") {
+      return res.status(400).json({
+        success: false,
+        message: "Chỉ có thể hủy đơn hàng đang chờ xác nhận",
+      });
+    }
+
+    order.status = "CANCELLED";
+    order.paymentStatus = "UNPAID";
+
+    for (const item of order.products) {
+      const variant = await ProductVariant.findById(item.variant);
+      if (variant) {
+        variant.stock += item.quantity;
+        await variant.save();
+      }
+
+      const product = await Product.findById(item.product);
+      if (product) {
+        product.totalStock += item.quantity;
+        await product.save();
+      }
+    }
+
+    if (order.coupon) {
+      const coupon = await Coupon.findById(order.coupon);
+      if (coupon) {
+        coupon.usedCount = Math.max(0, coupon.usedCount - 1);
+        coupon.usedBy = coupon.usedBy.filter(
+          (id) => id.toString() !== order.orderBy.toString()
+        );
+        await coupon.save();
+      }
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Hủy đơn hàng thành công",
+      order,
+    });
+  } catch (error) {
+    console.error("Cancel order error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
+const updateOrderAdminStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Đơn hàng không tồn tại",
+      });
+    }
+
+    const validStatuses = ["PENDING", "CONFIRMED", "SHIPPING", "DELIVERED", "CANCELLED"];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Trạng thái không hợp lệ",
+      });
+    }
+
+    if (status) {
+      if (status === "DELIVERED") {
+        order.paymentStatus = "PAID";
+      }
+
+      if (status === "CANCELLED") {
+        if (!["PENDING", "CONFIRMED"].includes(order.status)) {
+          return res.status(400).json({
+            success: false,
+            message: "Không thể hủy đơn hàng đang giao hoặc đã giao",
+          });
+        }
+
+        for (const item of order.products) {
+          const variant = await ProductVariant.findById(item.variant);
+          if (variant) {
+            variant.stock += item.quantity;
+            await variant.save();
+          }
+
+          const product = await Product.findById(item.product);
+          if (product) {
+            product.totalStock += item.quantity;
+            await product.save();
+          }
+        }
+
+        if (order.coupon) {
+          const coupon = await Coupon.findById(order.coupon);
+          if (coupon) {
+            coupon.usedCount = Math.max(0, coupon.usedCount - 1);
+            coupon.usedBy = coupon.usedBy.filter(
+              (id) => id.toString() !== order.orderBy.toString()
+            );
+            await coupon.save();
+          }
+        }
+      }
+
+      order.status = status;
     }
 
     await order.save();
@@ -374,7 +621,7 @@ const updateOrderStatus = async (req, res) => {
       order,
     });
   } catch (error) {
-    console.error("Update order status error:", error);
+    console.error("Update order admin status error:", error);
     return res.status(500).json({
       success: false,
       message: "Lỗi server",
@@ -384,5 +631,9 @@ const updateOrderStatus = async (req, res) => {
 
 module.exports = {
   createOrder,
-  updateOrderStatus,
+  getAllOrders,
+  getOrderById,
+  confirmPayment,
+  cancelOrder,
+  updateOrderAdminStatus,
 };
