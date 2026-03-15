@@ -41,6 +41,16 @@ const couponSchema = new mongoose.Schema(
       default: 0,
       min: [0, "Số lần đã sử dụng phải lớn hơn hoặc bằng 0"],
     },
+    usedBy: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "users",
+      default: [],
+    },
+    allowMultipleUsePerUser: {
+      type: Boolean,
+      default: false,
+      description: "Cho phép một user sử dụng nhiều lần",
+    },
     validFrom: {
       type: Date,
       required: [true, "Ngày bắt đầu hiệu lực là bắt buộc"],

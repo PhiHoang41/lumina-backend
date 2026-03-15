@@ -90,6 +90,7 @@ const CouponController = {
         minOrderAmount = 0,
         maxDiscountAmount,
         usageLimit,
+        allowMultipleUsePerUser = false,
         validFrom,
         validTo,
         status = "ACTIVE",
@@ -142,6 +143,7 @@ const CouponController = {
         minOrderAmount,
         maxDiscountAmount,
         usageLimit,
+        allowMultipleUsePerUser,
         validFrom,
         validTo,
         status,
@@ -172,6 +174,7 @@ const CouponController = {
         minOrderAmount,
         maxDiscountAmount,
         usageLimit,
+        allowMultipleUsePerUser,
         usedCount,
         validFrom,
         validTo,
@@ -225,6 +228,7 @@ const CouponController = {
           minOrderAmount,
           maxDiscountAmount,
           usageLimit,
+          allowMultipleUsePerUser,
           usedCount,
           validFrom,
           validTo,
@@ -318,6 +322,7 @@ const CouponController = {
 
   validateCoupon: async (req, res) => {
     try {
+      const userId = req.user.userId;
       const { code, orderAmount } = req.body;
 
       if (!code || orderAmount === undefined) {
@@ -349,6 +354,19 @@ const CouponController = {
           success: false,
           message: "Mã giảm giá đã hết hạn",
         });
+      }
+
+      if (userId) {
+        const hasUserUsedCoupon = coupon.usedBy.some(
+          (id) => id.toString() === userId
+        );
+
+        if (hasUserUsedCoupon && !coupon.allowMultipleUsePerUser) {
+          return res.status(400).json({
+            success: false,
+            message: "Bạn đã sử dụng mã giảm giá này rồi",
+          });
+        }
       }
 
       if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {

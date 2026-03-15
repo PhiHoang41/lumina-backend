@@ -188,6 +188,16 @@ const createOrder = async (req, res) => {
         });
       }
 
+      const hasUserUsedCoupon = coupon.usedBy.some(
+        (id) => id.toString() === userId
+      );
+      if (hasUserUsedCoupon && !coupon.allowMultipleUsePerUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Bạn đã sử dụng mã giảm giá này rồi",
+        });
+      }
+
       if (coupon.type === "PERCENTAGE") {
         discountAmount = (subtotal * coupon.value) / 100;
         if (coupon.maxDiscountAmount && discountAmount > coupon.maxDiscountAmount) {
@@ -198,6 +208,10 @@ const createOrder = async (req, res) => {
       }
 
       coupon.usedCount += 1;
+      // Thêm userId vào danh sách đã sử dụng
+      if (!coupon.usedBy.includes(userId)) {
+        coupon.usedBy.push(userId);
+      }
       await coupon.save();
     }
 
