@@ -498,10 +498,10 @@ const cancelOrder = async (req, res) => {
       });
     }
 
-    if (order.status !== "PENDING") {
+    if (!["PENDING", "CONFIRMED"].includes(order.status)) {
       return res.status(400).json({
         success: false,
-        message: "Chỉ có thể hủy đơn hàng đang chờ xác nhận",
+        message: "Chỉ có thể hủy đơn hàng đang chờ xác nhận hoặc đã xác nhận",
       });
     }
 
@@ -629,9 +629,95 @@ const updateOrderAdminStatus = async (req, res) => {
   }
 };
 
+const getMyOrders = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { page = 1, limit = 10, status, sort = "createdAt:desc" } = req.query;
+
+    const filter = { orderBy: userId };
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const [sortField, sortOrder] = sort.split(":");
+    const sortObj = {};
+    sortObj[sortField] = sortOrder === "asc" ? 1 : -1;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [orders, total] = await Promise.all([
+      Order.find(filter)
+        .populate("coupon", "code")
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limitNum),
+      Order.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: orders,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Get my orders error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
+const getMyOrderById = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { id } = req.params;
+
+    const order = await Order.findOne({ _id: id, orderBy: userId })
+      .populate("coupon")
+      .populate("orderBy", "name email phone")
+      .populate({
+        path: "products.product",
+        select: "name images",
+      })
+      .populate({
+        path: "products.variant",
+        select: "size color images",
+      });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Đơn hàng không tồn tại",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    console.error("Get my order by ID error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
 module.exports = {
   createOrder,
   getAllOrders,
+  getMyOrders,
+  getMyOrderById,
   getOrderById,
   confirmPayment,
   cancelOrder,
