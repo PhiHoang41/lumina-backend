@@ -629,9 +629,57 @@ const updateOrderAdminStatus = async (req, res) => {
   }
 };
 
+const getMyOrders = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { page = 1, limit = 10, status, sort = "createdAt:desc" } = req.query;
+
+    const filter = { orderBy: userId };
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const [sortField, sortOrder] = sort.split(":");
+    const sortObj = {};
+    sortObj[sortField] = sortOrder === "asc" ? 1 : -1;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [orders, total] = await Promise.all([
+      Order.find(filter)
+        .populate("coupon", "code")
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limitNum),
+      Order.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: orders,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Get my orders error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
 module.exports = {
   createOrder,
   getAllOrders,
+  getMyOrders,
   getOrderById,
   confirmPayment,
   cancelOrder,
