@@ -676,10 +676,40 @@ const getMyOrders = async (req, res) => {
   }
 };
 
+const getMyOrderById = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { id } = req.params;
+
+    const order = await Order.findOne({ _id: id, orderBy: userId })
+      .populate("coupon")
+      .populate("orderBy", "name email phone");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Đơn hàng không tồn tại",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    console.error("Get my order by ID error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+    });
+  }
+};
+
 module.exports = {
   createOrder,
   getAllOrders,
   getMyOrders,
+  getMyOrderById,
   getOrderById,
   confirmPayment,
   cancelOrder,
