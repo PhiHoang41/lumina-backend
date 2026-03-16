@@ -498,10 +498,10 @@ const cancelOrder = async (req, res) => {
       });
     }
 
-    if (order.status !== "PENDING") {
+    if (!["PENDING", "CONFIRMED"].includes(order.status)) {
       return res.status(400).json({
         success: false,
-        message: "Chỉ có thể hủy đơn hàng đang chờ xác nhận",
+        message: "Chỉ có thể hủy đơn hàng đang chờ xác nhận hoặc đã xác nhận",
       });
     }
 
@@ -683,7 +683,15 @@ const getMyOrderById = async (req, res) => {
 
     const order = await Order.findOne({ _id: id, orderBy: userId })
       .populate("coupon")
-      .populate("orderBy", "name email phone");
+      .populate("orderBy", "name email phone")
+      .populate({
+        path: "products.product",
+        select: "name images",
+      })
+      .populate({
+        path: "products.variant",
+        select: "size color images",
+      });
 
     if (!order) {
       return res.status(404).json({
