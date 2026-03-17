@@ -82,6 +82,104 @@ const UserController = {
     }
   },
 
+  updateMyProfile: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const { fullName, phone, avatar, address } = req.body;
+
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy người dùng",
+        });
+      }
+
+      user.fullName = fullName;
+      user.phone = phone;
+      user.avatar = avatar;
+      user.address = address;
+
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Cập nhật profile thành công",
+        data: user.toJSON(),
+      });
+    } catch (error) {
+      if (error.name === "ValidationError") {
+        const errors = Object.values(error.errors).map((err) => err.message);
+        return res.status(400).json({
+          success: false,
+          message: errors[0],
+        });
+      }
+      console.error("Lỗi cập nhật profile:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Có lỗi xảy ra khi cập nhật profile",
+      });
+    }
+  },
+
+  changeMyPassword: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const { currentPassword, newPassword } = req.body;
+
+      // Validate required fields
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          message: "Current password and new password are required",
+        });
+      }
+
+      // Validate new password length
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: "New password must be at least 6 characters",
+        });
+      }
+
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      // Verify current password
+      const isMatch = await user.comparePassword(currentPassword);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Current password is incorrect",
+        });
+      }
+
+      // Update password (model will hash it via pre-save middleware)
+      user.password = newPassword;
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Password changed successfully",
+      });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred while changing password",
+      });
+    }
+  },
+
   getAllUsers: async (req, res) => {
     try {
       const { page = 1, limit = 10, search = "", role = "" } = req.query;
