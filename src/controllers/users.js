@@ -3,7 +3,8 @@ const User = require("../models/users");
 const UserController = {
   createUser: async (req, res) => {
     try {
-      const { fullName, email, password, phone, address, role, avatar } = req.body;
+      const { fullName, email, password, phone, address, role, avatar } =
+        req.body;
 
       // Validate required fields
       if (!fullName || !email || !password) {
@@ -157,13 +158,12 @@ const UserController = {
       // Verify current password
       const isMatch = await user.comparePassword(currentPassword);
       if (!isMatch) {
-        return res.status(401).json({
+        return res.status(400).json({
           success: false,
           message: "Current password is incorrect",
         });
       }
 
-      // Update password (model will hash it via pre-save middleware)
       user.password = newPassword;
       await user.save();
 
