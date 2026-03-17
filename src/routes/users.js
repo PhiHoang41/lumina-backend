@@ -6,6 +6,8 @@ const adminMiddleware = require("../middlewares/admin");
 const router = express.Router();
 
 router.get("/me", authMiddleware, UserController.getMe);
+router.put("/me/profile", authMiddleware, UserController.updateMyProfile);
+router.put("/me/password", authMiddleware, UserController.changeMyPassword);
 
 router.post("/", authMiddleware, adminMiddleware, UserController.createUser);
 router.get("/", authMiddleware, adminMiddleware, UserController.getAllUsers);
