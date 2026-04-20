@@ -279,6 +279,34 @@ const CouponController = {
     }
   },
 
+  softDeleteCoupon: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const coupon = await Coupon.findById(id);
+
+      if (!coupon || coupon.deletedAt) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy mã giảm giá",
+        });
+      }
+
+      await Coupon.findByIdAndUpdate(id, { deletedAt: new Date() });
+
+      return res.status(200).json({
+        success: true,
+        message: "Xóa mềm mã giảm giá thành công",
+      });
+    } catch (error) {
+      console.error("Lỗi xóa mềm mã giảm giá:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Có lỗi xảy ra khi xóa mềm mã giảm giá",
+      });
+    }
+  },
+
   updateCouponStatus: async (req, res) => {
     try {
       const { id } = req.params;

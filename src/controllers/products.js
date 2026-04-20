@@ -539,6 +539,34 @@ const ProductController = {
     }
   },
 
+  softDeleteProduct: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const product = await Product.findById(id);
+
+      if (!product || product.deletedAt) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy sản phẩm",
+        });
+      }
+
+      await Product.findByIdAndUpdate(id, { deletedAt: new Date() });
+
+      return res.status(200).json({
+        success: true,
+        message: "Xóa mềm sản phẩm thành công",
+      });
+    } catch (error) {
+      console.error("Lỗi xóa mềm sản phẩm:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi khi xóa mềm sản phẩm",
+      });
+    }
+  },
+
   toggleActivateProduct: async (req, res) => {
     try {
       const { id } = req.params;

@@ -64,6 +64,10 @@ const couponSchema = new mongoose.Schema(
       enum: ["ACTIVE", "INACTIVE", "EXPIRED"],
       default: "ACTIVE",
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

@@ -32,6 +32,12 @@ router.patch(
   adminMiddleware,
   ProductController.toggleActivateProduct,
 );
+router.patch(
+  "/:id/soft-delete",
+  authMiddleware,
+  adminMiddleware,
+  ProductController.softDeleteProduct,
+);
 
 // ==================== VARIANTS ====================
 router.get("/:productId/variants", ProductController.getProductVariants);

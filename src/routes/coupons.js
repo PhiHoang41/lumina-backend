@@ -46,6 +46,12 @@ router.patch(
   adminMiddleware,
   CouponController.updateCouponStatus,
 );
+router.patch(
+  "/:id/soft-delete",
+  authMiddleware,
+  adminMiddleware,
+  CouponController.softDeleteCoupon,
+);
 
 router.post(
   "/validate",

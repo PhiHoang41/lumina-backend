@@ -324,6 +324,34 @@ const UserController = {
     }
   },
 
+  softDeleteUser: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const user = await User.findById(id);
+
+      if (!user || user.deletedAt) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy người dùng",
+        });
+      }
+
+      await User.findByIdAndUpdate(id, { deletedAt: new Date() });
+
+      return res.status(200).json({
+        success: true,
+        message: "Xóa mềm người dùng thành công",
+      });
+    } catch (error) {
+      console.error("Lỗi xóa mềm người dùng:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Có lỗi xảy ra khi xóa mềm người dùng",
+      });
+    }
+  },
+
   changePassword: async (req, res) => {
     try {
       const { id } = req.params;
