@@ -107,6 +107,10 @@ const ProductController = {
 
       const filter = {};
 
+      if (req.query.showDeleted !== "true") {
+        filter.deletedAt = { $in: [null, undefined] };
+      }
+
       if (search) {
         filter.name = { $regex: search, $options: "i" };
       }
@@ -535,6 +539,34 @@ const ProductController = {
       return res.status(500).json({
         success: false,
         message: "Lỗi khi xóa sản phẩm",
+      });
+    }
+  },
+
+  restoreProduct: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const product = await Product.findById(id);
+
+      if (!product || !product.deletedAt) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy sản phẩm đã xóa",
+        });
+      }
+
+      await Product.findByIdAndUpdate(id, { deletedAt: null });
+
+      return res.status(200).json({
+        success: true,
+        message: "Khôi phục sản phẩm thành công",
+      });
+    } catch (error) {
+      console.error("Lỗi khôi phục sản phẩm:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi khi khôi phục sản phẩm",
       });
     }
   },

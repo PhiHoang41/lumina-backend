@@ -38,6 +38,12 @@ router.patch(
   adminMiddleware,
   ProductController.softDeleteProduct,
 );
+router.patch(
+  "/:id/restore",
+  authMiddleware,
+  adminMiddleware,
+  ProductController.restoreProduct,
+);
 
 // ==================== VARIANTS ====================
 router.get("/:productId/variants", ProductController.getProductVariants);

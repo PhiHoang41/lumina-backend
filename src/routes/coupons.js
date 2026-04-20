@@ -52,6 +52,12 @@ router.patch(
   adminMiddleware,
   CouponController.softDeleteCoupon,
 );
+router.patch(
+  "/:id/restore",
+  authMiddleware,
+  adminMiddleware,
+  CouponController.restoreCoupon,
+);
 
 router.post(
   "/validate",

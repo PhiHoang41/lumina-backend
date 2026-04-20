@@ -7,6 +7,10 @@ const CouponController = {
 
       const query = {};
 
+      if (req.query.showDeleted !== "true") {
+        query.deletedAt = { $in: [null, undefined] };
+      }
+
       if (status) {
         query.status = status;
       }
@@ -279,6 +283,34 @@ const CouponController = {
     }
   },
 
+  restoreCoupon: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const coupon = await Coupon.findById(id);
+
+      if (!coupon || !coupon.deletedAt) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy mã giảm giá đã xóa",
+        });
+      }
+
+      await Coupon.findByIdAndUpdate(id, { deletedAt: null });
+
+      return res.status(200).json({
+        success: true,
+        message: "Khôi phục mã giảm giá thành công",
+      });
+    } catch (error) {
+      console.error("Lỗi khôi phục mã giảm giá:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Có lỗi xảy ra khi khôi phục mã giảm giá",
+      });
+    }
+  },
+
   softDeleteCoupon: async (req, res) => {
     try {
       const { id } = req.params;
@@ -364,6 +396,13 @@ const CouponController = {
 
       if (!coupon) {
         return res.status(404).json({
+          success: false,
+          message: "Mã giảm giá không tồn tại",
+        });
+      }
+
+      if (coupon.deletedAt) {
+        return res.status(400).json({
           success: false,
           message: "Mã giảm giá không tồn tại",
         });

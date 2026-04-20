@@ -82,6 +82,13 @@ const AuthController = {
         });
       }
 
+      if (user.deletedAt) {
+        return res.status(403).json({
+          success: false,
+          message: "Tài khoản đã bị vô hiệu hóa",
+        });
+      }
+
       const accessToken = jwt.sign(
         { userId: user._id, email: user.email, role: user.role },
         process.env.JWT_SECRET,

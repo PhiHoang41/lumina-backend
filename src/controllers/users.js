@@ -186,6 +186,10 @@ const UserController = {
 
       const query = {};
 
+      if (req.query.showDeleted !== "true") {
+        query.deletedAt = { $in: [null, undefined] };
+      }
+
       if (search) {
         query.$or = [
           { fullName: { $regex: search, $options: "i" } },
@@ -320,6 +324,34 @@ const UserController = {
       return res.status(500).json({
         success: false,
         message: "Có lỗi xảy ra khi xóa user",
+      });
+    }
+  },
+
+  restoreUser: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const user = await User.findById(id);
+
+      if (!user || !user.deletedAt) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy người dùng đã xóa",
+        });
+      }
+
+      await User.findByIdAndUpdate(id, { deletedAt: null });
+
+      return res.status(200).json({
+        success: true,
+        message: "Khôi phục người dùng thành công",
+      });
+    } catch (error) {
+      console.error("Lỗi khôi phục người dùng:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Có lỗi xảy ra khi khôi phục người dùng",
       });
     }
   },
